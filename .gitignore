@@ -1,0 +1,8 @@
+*.pfx
+*.key
+*.pem
+*.snk
+bin/
+obj/
+packages/
+scripts/.local/

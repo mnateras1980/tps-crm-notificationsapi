@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <RootNamespace>Tps.Crm.WhoAmI.Activity</RootNamespace>
+    <AssemblyName>Tps.Crm.WhoAmI.Activity</AssemblyName>
+    <LangVersion>7.3</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Strong-name signing: CRM requires it. The key file is NEVER committed; pass
+       /p:AssemblyKeyFile=<path to .snk> at build. Without it the build is unsigned (dev only). -->
+  <PropertyGroup Condition="'$(AssemblyKeyFile)' != '' And Exists('$(AssemblyKeyFile)')">
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(AssemblyKeyFile)</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Source-linked shared signer (no project reference, no ILMerge). -->
+    <Compile Include="..\Shared\Assertion\*.cs" Link="Assertion\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Activities" />
+    <Reference Include="System.Runtime.Serialization" />
+    <PackageReference Include="Microsoft.CrmSdk.Workflow" Version="9.0.2.59" />
+  </ItemGroup>
+
+</Project>
