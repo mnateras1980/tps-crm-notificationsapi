@@ -289,6 +289,51 @@ namespace Tps.Crm.WhoAmI.Api.Tests
         }
 
         [TestMethod]
+        public void SignedAssertionWithBadCharsetClaims_Returns401_NoCrmCall()
+        {
+            var env = new Env();
+            foreach (string bad in new[] { "a|b", "org\n", "o rg", "../x", new string('a', 65), "\u00e9" })
+            {
+                HttpResponseMessage r;
+                try { r = env.Call(env.Token(bad, "MACH1")); }
+                catch (ArgumentException) { continue; } // signer refused to mint it: nothing reaches the API
+                Assert.AreNotEqual(HttpStatusCode.OK, r.StatusCode, bad);
+                Assert.AreEqual(0, env.Factory.Calls, bad);
+            }
+        }
+
+        [TestMethod]
+        public void IsValidName_RejectsTrailingNewlineEmptyAndNull()
+        {
+            Assert.IsTrue(OrgAllowList.IsValidName("Org-A_1.x"));
+            Assert.IsFalse(OrgAllowList.IsValidName("OrgA\n"));
+            Assert.IsFalse(OrgAllowList.IsValidName(string.Empty));
+            Assert.IsFalse(OrgAllowList.IsValidName(null));
+            Assert.IsFalse(OrgAllowList.IsValidName("a b"));
+            Assert.IsFalse(OrgAllowList.IsValidName(new string('a', 65)));
+        }
+
+        [TestMethod]
+        public void CrmEmptyUserId_Returns502_NoLeak()
+        {
+            var env = new Env();
+            env.Factory.Fake.Failure = new InvalidOperationException("Empty UserId " + CrmUrl);
+            var r = env.Call(env.Token("OrgA", "MACH1"));
+            Assert.AreEqual(HttpStatusCode.BadGateway, r.StatusCode);
+            AssertNoLeak(r);
+        }
+
+        [TestMethod]
+        public void FailureResponses_AreGenericJsonErrorCodesOnly()
+        {
+            var env = new Env();
+            var r = env.Call(env.Token("OrgA", "OTHER"));
+            Assert.AreEqual("{\"error\":\"forbidden\"}", Body(r));
+            var r2 = env.Call("x.y.z");
+            Assert.AreEqual("{\"error\":\"unauthorized\"}", Body(r2));
+        }
+
+        [TestMethod]
         public void AllowList_RejectsInvalidNamesNonHttpsUrlsAndDuplicates()
         {
             var list = OrgAllowList.Build(new[]
