@@ -1,3 +1,7 @@
 *.pfx
 *.key
 *.pem
+bin/
+obj/
+packages/
+scripts/.local/
