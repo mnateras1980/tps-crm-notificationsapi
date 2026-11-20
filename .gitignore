@@ -1,6 +1,7 @@
 *.pfx
 *.key
 *.pem
+*.snk
 bin/
 obj/
 packages/
