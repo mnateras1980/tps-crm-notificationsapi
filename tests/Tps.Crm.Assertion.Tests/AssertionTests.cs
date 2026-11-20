@@ -258,6 +258,68 @@ namespace Tps.Crm.Assertion.Tests
         }
 
         [TestMethod]
+        public void ExpiryBoundaryExactlyAtSkewLimitRejected()
+        {
+            AssertRejected(Raw(Header(_key1), Payload(T - 200, T - 200, T - 60), _key1), AssertionReason.Expired);
+            Assert.IsTrue(Verifier(_key1).Verify(Raw(Header(_key1), Payload(T - 200, T - 200, T - 59), _key1)).Success);
+        }
+
+        [TestMethod]
+        public void NotBeforeBoundaryAtSkewLimitAcceptedAndOneOverRejected()
+        {
+            Assert.IsTrue(Verifier(_key1).Verify(Raw(Header(_key1), Payload(T + 60, T + 60, T + 120), _key1)).Success);
+            AssertRejected(Raw(Header(_key1), Payload(T + 61, T + 61, T + 120), _key1), AssertionReason.NotYetValid);
+        }
+
+        [TestMethod]
+        public void VerifierAcceptsExactly300SecondLifetime()
+        {
+            Assert.IsTrue(Verifier(_key1).Verify(Raw(Header(_key1), Payload(T, T, T + 300), _key1)).Success);
+        }
+
+        [TestMethod]
+        public void NotBeforeAfterExpiryOrBeforeIssuedAtRejected()
+        {
+            AssertRejected(Raw(Header(_key1), Payload(T, T + 60, T + 60), _key1), AssertionReason.InvalidClaims);
+            AssertRejected(Raw(Header(_key1), Payload(T, T - 1, T + 60), _key1), AssertionReason.InvalidClaims);
+        }
+
+        [TestMethod]
+        public void NonCanonicalOrPaddedBase64UrlRejected()
+        {
+            string[] p = Good().Split('.');
+            AssertRejected(p[0] + "." + p[1] + "." + p[2] + "=", AssertionReason.Malformed);
+            AssertRejected(p[0] + "=." + p[1] + "." + p[2], AssertionReason.Malformed);
+            AssertRejected(p[0] + "." + p[1] + "." + p[2].Replace('-', '+').Replace('_', '/') + "+", AssertionReason.Malformed);
+            Assert.IsNull(Base64Url.Decode("QR"));   // non-zero trailing bits
+            Assert.IsNull(Base64Url.Decode("Q"));    // impossible length
+        }
+
+        [TestMethod]
+        public void OversizedTokenRejectedAsMalformed()
+        {
+            AssertRejected(new string('a', AssertionContract.MaxTokenLength + 1), AssertionReason.Malformed);
+            string[] p = Good().Split('.');
+            AssertRejected(p[0] + "." + p[1] + "." + new string('A', AssertionContract.MaxTokenLength), AssertionReason.Malformed);
+        }
+
+        [TestMethod]
+        public void DuplicateHeaderKeysRejected()
+        {
+            string dup = Header(_key1).TrimEnd('}') + ",\"alg\":\"RS256\"}";
+            AssertRejected(Raw(dup, Payload(T, T, T + 60), _key1), AssertionReason.Malformed);
+        }
+
+        [TestMethod]
+        public void ReplayDetectionIsCaseInsensitiveForJti()
+        {
+            var v = Verifier(_key1);
+            string jti = Guid.NewGuid().ToString("D");
+            Assert.IsTrue(v.Verify(Raw(Header(_key1), Payload(T, T, T + 60, jti: jti.ToLowerInvariant()), _key1)).Success);
+            Assert.AreEqual(AssertionReason.Replayed, v.Verify(Raw(Header(_key1), Payload(T, T, T + 60, jti: jti.ToUpperInvariant()), _key1)).Reason);
+        }
+
+        [TestMethod]
         public void ReasonCodesDoNotLeakDetails()
         {
             var r = Verifier(_key1).Verify(Raw(Header(_key1), Payload(T, T, T + 60, org: "https://secret"), _key1));
