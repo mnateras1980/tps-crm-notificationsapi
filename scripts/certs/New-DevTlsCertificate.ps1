@@ -11,10 +11,16 @@ param(
     [string]$FriendlyName = 'TPS WhoAmI DEV TLS',
     [int]$ValidDays = 365,
     # Optional public-only export. Default: none.
-    [string]$PublicCerPath
+    [string]$PublicCerPath,
+    # Required to run on a Server OS (shared/test/prod hosts must never get a dev Root trust).
+    [switch]$Force
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue -WhatIf:$false
+if ((-not $os -or $os.ProductType -ne 1) -and -not $Force) {
+    throw 'Not a client OS (or OS unknown): dev Root trust is workstation-only. Use -Force to override. Denied.'
+}
 if ($PublicCerPath -and $PublicCerPath -notmatch '\.cer$') { throw 'Only .cer export is allowed.' }
 
 $dns = @('localhost', $env:COMPUTERNAME)

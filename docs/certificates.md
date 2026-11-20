@@ -56,4 +56,14 @@ Approver: <Security Lead>     Delivery: public cert only, via CSR
 ## 7. Dev scripts (`scripts\certs\`)
 All support `-WhatIf`, need elevation for real runs, and export only public `.cer` (default outside the repo):
 `New-DevTlsCertificate.ps1`, `New-DevAssertionSigningCertificate.ps1`, `Grant-SigningKeyRead.ps1`, `Bind-IisTls.ps1`.
-Dev cleanup: delete certs by thumbprint from `Cert:\LocalMachine\My` and the TLS copy from `Cert:\LocalMachine\Root`.
+**Root trust blast radius.** `New-DevTlsCertificate.ps1` adds the TLS cert to `Cert:\LocalMachine\Root`. That trust is machine-wide: every user and service on the machine trusts anything signed by that cert. Use it on a developer workstation only, never on a shared, test or production host (the script refuses a Server OS unless `-Force`). Grant-SigningKeyRead.ps1 accepts only a single user or gMSA, decided on the resolved SID (groups, builtin and well-known SIDs are refused).
+
+**Dev cleanup** (elevated; `<tp>` = thumbprint, `<port>` = binding port):
+```
+Remove-Item Cert:\LocalMachine\Root\<tp>
+Remove-Item Cert:\LocalMachine\My\<tp>                  # TLS and signing certs
+Remove-WebBinding -Name TpsWhoAmI -Protocol https -Port <port>
+netsh http delete sslcert ipport=0.0.0.0:<port>         # if a http.sys binding remains
+Remove-Item Cert:\LocalMachine\TrustedPeople\<tp>       # imported public signing cert
+Remove-Item "$env:LOCALAPPDATA\TpsWhoAmI" -Recurse      # exported .cer files
+```
