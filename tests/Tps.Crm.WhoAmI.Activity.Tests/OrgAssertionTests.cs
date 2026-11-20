@@ -135,6 +135,63 @@ namespace Tps.Crm.WhoAmI.Activity.Tests
             Assert.AreEqual("Org Assertion", output.GetCustomAttribute<OutputAttribute>().Name);
         }
 
+        // Hand-written minimal fake: RealProxy answers only the members Execute touches.
+        private sealed class Fake : System.Runtime.Remoting.Proxies.RealProxy
+        {
+            private readonly Func<string, object> _answer;
+            public Fake(Type t, Func<string, object> answer) : base(t) { _answer = answer; }
+            public override System.Runtime.Remoting.Messaging.IMessage Invoke(System.Runtime.Remoting.Messaging.IMessage msg)
+            {
+                var call = (System.Runtime.Remoting.Messaging.IMethodCallMessage)msg;
+                object value = call.MethodName == "GetType" ? GetProxiedType() : _answer(call.MethodName);
+                return new System.Runtime.Remoting.Messaging.ReturnMessage(value, null, 0, call.LogicalCallContext, call);
+            }
+            public static T Make<T>(Func<string, object> answer) { return (T)new Fake(typeof(T), answer).GetTransparentProxy(); }
+        }
+
+        private static WorkflowInvoker InvokerWith(string thumbprintRow, int rows)
+        {
+            var entities = new EntityCollection();
+            for (int i = 0; i < rows; i++)
+            {
+                var e = new Entity("mm360_setup");
+                e["mm360_value"] = thumbprintRow;
+                entities.Entities.Add(e);
+            }
+            var service = Fake.Make<IOrganizationService>(m => m == "RetrieveMultiple" ? entities : null);
+            var factory = Fake.Make<IOrganizationServiceFactory>(m => service);
+            var ctx = Fake.Make<IWorkflowContext>(m =>
+                m == "get_OrganizationName" ? (object)"OrgA" : m == "get_UserId" ? (object)Guid.NewGuid() : null);
+            var invoker = new WorkflowInvoker(new OrgAssertionActivity());
+            invoker.Extensions.Add<IWorkflowContext>(() => ctx);
+            invoker.Extensions.Add<IOrganizationServiceFactory>(() => factory);
+            return invoker;
+        }
+
+        [TestMethod]
+        public void Execute_ThumbprintNotInStore_ThrowsGenericErrorWithoutDetails()
+        {
+            const string missing = "FEDCBA9876543210FEDCBA9876543210FEDCBA98"; // not a real certificate
+            var ex = Assert.ThrowsException<InvalidPluginExecutionException>(() => InvokerWith(missing, 1).Invoke());
+            Assert.AreEqual(OrgAssertionIssuer.FailureMessage, ex.Message);
+            Assert.IsFalse(ex.Message.Contains(missing));
+            Assert.IsNull(ex.InnerException);
+        }
+
+        [TestMethod]
+        public void Execute_AmbiguousOrMissingSetupRows_Deny()
+        {
+            Assert.ThrowsException<InvalidPluginExecutionException>(() => InvokerWith(Thumb, 2).Invoke());
+            Assert.ThrowsException<InvalidPluginExecutionException>(() => InvokerWith(Thumb, 0).Invoke());
+        }
+
+        [TestMethod]
+        public void Execute_NoWorkflowContextExtension_DeniesGenerically()
+        {
+            var ex = Assert.ThrowsException<InvalidPluginExecutionException>(() => new WorkflowInvoker(new OrgAssertionActivity()).Invoke());
+            Assert.AreEqual(OrgAssertionIssuer.FailureMessage, ex.Message);
+        }
+
         [TestMethod]
         public void Normalize_RequiresExactly40HexDigits()
         {
@@ -144,3 +201,7 @@ namespace Tps.Crm.WhoAmI.Activity.Tests
         }
     }
 }
+
+
+
+
